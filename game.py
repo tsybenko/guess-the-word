@@ -123,7 +123,3 @@ class GameSession:
         self.IS_RUNNING = True
         self._start_loop()
         self._print_results()
-
-
-session = GameSession()
-session.run()
