@@ -7,8 +7,9 @@ import random
 import terminal
 import termcolor
 
-
-WORDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'data/words.json')
+DATA_PATH = os.path.join(os.path.dirname(__file__), 'data')
+WORDS_FILE_PATH = os.path.join(DATA_PATH, 'words.json')
+SCOREBOARD_FILE_PATH = os.path.join(DATA_PATH, 'scoreboard.json')
 
 
 def get_words():
@@ -27,6 +28,20 @@ class Scoreboard:
     def __init__(self, amount=0):
         self._amount = amount
 
+    def get_data(self, file_path):
+        json_decoder = json.decoder.JSONDecoder()
+
+        with open(file_path, 'r') as file:
+            file_data = file.read()
+
+            if len(file_data) == 0:
+                file_data = '[]'
+
+            results: list = json_decoder.decode(file_data)
+
+        file.close()
+        return results
+
     def get_amount(self):
         return self._amount
 
@@ -39,22 +54,68 @@ class Scoreboard:
         return table.get_string()
 
 
+class Player:
+    def __init__(self, nickname):
+        self.scoreboard = Scoreboard()
+        self.nickname = nickname
+
+    def save_score(self, amount):
+        def write_data(file_path, data):
+            with open(file_path, 'w') as file:
+                file.write(data)
+            file.close()
+
+        def clear_file(file_path):
+            with open(file_path, 'w') as file:
+                pass
+            file.close()
+
+        results = self.scoreboard.get_data(SCOREBOARD_FILE_PATH)
+
+        player = None
+
+        for record in results:
+            if record['nickname'] == self.nickname:
+                record["score"] = amount
+                player = record
+
+        if player is None:
+            results.append({
+                'nickname': self.nickname,
+                'score': amount
+            })
+
+        clear_file(SCOREBOARD_FILE_PATH)
+        write_data(SCOREBOARD_FILE_PATH, json.dumps(results))
+
+
 class GameSession:
     IS_RUNNING = False
 
-    def __init__(self):
+    def __init__(self, player):
+        self.player = player
         self.scoreboard = Scoreboard()
         self.table = prettytable.PrettyTable()
-        self.word = get_random_word()
-        self.attempted_letters = []
-        self.display = ['_' for _ in self.word]
-        self.attempts_available = math.ceil(len(self.word) / 2)
-        self.guessed_letters = []
-        self.not_guessed_letters = []
+
+    def _show_leaders(self):
+        table = prettytable.PrettyTable()
+        table.field_names = ['Nickname', 'Score']
+        players = self.player.scoreboard.get_data(SCOREBOARD_FILE_PATH)
+        for player in sorted(players, key=lambda player: player['score'], reverse=True):
+            table.add_row([player["nickname"], player["score"]])
+        print('\n==== Leaderboard ====\n')
+        print(table.get_string())
 
     def _start_loop(self):
         repeat = True
         while self.IS_RUNNING:
+            self.word = get_random_word()
+            self.attempted_letters = []
+            self.display = ['_' for _ in self.word]
+            self.attempts_available = math.ceil(len(self.word) / 2)
+            self.guessed_letters = []
+            self.not_guessed_letters = []
+
             while repeat:
                 guessed = ''.join(self.display)
 
@@ -85,6 +146,7 @@ class GameSession:
 
                 if input_letter == self.word:
                     terminal.success('\nBingo! You Guessed!\n')
+                    self.scoreboard.add(50)
                     break
 
                 letter_guessed = False
@@ -112,6 +174,8 @@ class GameSession:
 
                 # print(self.guessed_letters, self.not_guessed_letters)
 
+                self.player.save_score(self.scoreboard.get_amount())
+
             self.IS_RUNNING = input('\nWant to play again? [Y/N]\n').lower() == 'y'
 
     def _print_results(self):
@@ -123,3 +187,4 @@ class GameSession:
         self.IS_RUNNING = True
         self._start_loop()
         self._print_results()
+        self._show_leaders()
